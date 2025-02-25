@@ -1,0 +1,179 @@
+---
+title: "data607_Project01"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  word_document: default
+  pdf_document: default
+---
+title: "data607_Project01"
+author: "Md. Tanzil Ehsan"
+format: pdf
+editor: visual
+
+
+```{r}
+# Load necessary libraries
+if (!requireNamespace("rstudioapi", quietly = TRUE)) {install.packages("rstudioapi")}
+if (!requireNamespace("readr", quietly = TRUE)){ install.packages("readr")}
+if (!requireNamespace("ggplot2", quietly = TRUE)) {install.packages("ggplot2")}
+if (!requireNamespace("tidyverse", quietly = TRUE)) {install.packages("tidyverse")}
+if (!requireNamespace("tidyr", quietly = TRUE)) {install.packages("tidyr")}
+
+  
+
+
+
+```{r}
+library(tidyverse)
+library(readr)
+library(tibble)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r}
+raw_data <- readLines("https://raw.githubusercontent.com/tanzil64/DATA607-Project-01/refs/heads/main/tournamentinfo.txt")
+```
+
+
+```{r}
+##raw_data <- readLines ("C:/Users/tanzi/OneDrive/DATA/607/Week4/tournamentinfo.txt")
+```
+
+You can add options to executable code like this
+
+
+```{r}
+
+#| echo: false
+# Extract the required data using regular expressions
+player_num <- as.numeric(unlist(str_extract_all(raw_data,"(?<=\\s{3,4})\\d{1,2}(?=\\s)")))
+player_name <- unlist(str_extract_all(raw_data,"(?<=\\d\\s\\|\\s)([A-z, -]*\\s){1,}[[:alpha:]]*(?=\\s*\\|)"))
+player_state <- unlist(str_extract_all(raw_data, "[[:upper:]]{2}(?=\\s\\|)"))
+total_pts <- as.numeric(unlist(str_extract_all(raw_data, "(?<=\\|)\\d\\.\\d")))
+player_pre_rat <- as.numeric(unlist(str_extract_all(raw_data, "(?<=R:\\s{1,2})(\\d{3,4}(?=\\s))|(\\d{3,4}(?=P\\d{1,2}\\s*-))")))
+```
+
+
+
+```{r}
+# Take the extracted data and put it into a data frame
+processed_data <- data.frame(player_num, player_name, player_state, total_pts, player_pre_rat)
+```
+
+
+
+```{r}
+# Check the data frame's structure to make sure it is as intended (i.e. number columns are numeric, character columns are character, etc..., and that it has the correct number of rows)
+str(processed_data)
+
+
+```
+```{r}
+# Had some initial challenges doing this with only regex so to make it simpler and a bit more robust I created a new list that only had included the relevant rows from the raw data file.
+# selects every third line starting at line 5.
+secondary_rows <- raw_data[seq(5, 196, 3)]
+
+#opponent_num will contain a vector of opponent numbers for each player.
+opponent_num <- as.numeric(unlist(str_extract_all(secondary_rows, "(?<=\\|(W|L|D)\\s{2,3})[[:digit:]]{1,2}(?=\\|)|((?<!->)(?<=\\|(U|H|B|X))\\s{4}(?=\\|))")))
+```
+
+
+```{r}
+# Create matrix to store data calculated in the for loop.  Pre-populating values with NA for more efficient processing in R.
+# Creates a 64-row by 2-column matrix filled with NA values.
+# Each row represents a player (since there are 64 players).
+# Columns:
+#"total_opp_pcr" → The sum of all opponent pre-ratings.
+#"avg_opp_pcr" → The average of opponent pre-ratings.
+
+
+pcr_matrix <- matrix(data = NA, nrow = 64, ncol = 2)
+
+# Assign readable names for the matrix
+colnames(pcr_matrix) <- c("total_opp_pcr", "avg_opp_pcr")
+
+# Initialize a variable to be used as a counter in the for loop to fill the corresponding matrix row
+row_counter <- 0
+
+# Start of for loop
+# Each player plays 7 games, so we process their 7 opponents' numbers at a time.
+#Loops through opponent_num in steps of 7.
+# length(opponent_num) - 6 → Ensures we stop before exceeding the vector length.
+for(i in seq(from=1, to=length(opponent_num)-6, by=7)){
+  row_counter <- row_counter + 1
+  
+# Perform a lookup of each competitor's score based on their player number and add the up for each row (corresponding to each sequence of 7 data points, w/ value from for loop serving as row 'anchor')
+ # Extract the opponent numbers for the current player
+current_opponents <- opponent_num[seq(from=i, to=i+6, by=1)]
+
+# Find the pre-tournament ratings of these opponents
+opponent_ratings <- subset(processed_data$player_pre_rat, 
+                           processed_data$player_num %in% current_opponents)
+
+# Calculate the total opponent pre-tournament rating
+total_opp_pcr <- sum(opponent_ratings, na.rm = TRUE)  # Use na.rm = TRUE to ignore NA values
+
+# Store the result in the matrix
+pcr_matrix[row_counter, 1] <- total_opp_pcr
+
+  
+# Calculate the average score for each row, excluding missing entries
+  pcr_matrix[row_counter, 2] <- pcr_matrix[row_counter, 1] / length(subset(opponent_num[seq(from=i, to=i+6, by=1)],!is.na(opponent_num[seq(from=i, to=i+6, by=1)])))
+  
+}
+# End of for loop
+
+# Verify that matrix was processed properly by looking at the first few rows of output
+head(pcr_matrix, 5)
+```
+
+  
+
+
+# Round the figures to the nearest whole number
+
+```{r}
+pcr_matrix[, 2] <- round(pcr_matrix[,2], digits = 0)
+# Add average scores to data frame with other processed data and rename for readability
+processed_data <- cbind(processed_data, pcr_matrix[, 2])
+processed_data <- rename(processed_data, avg_opp_pcr = `pcr_matrix[, 2]`)
+
+```
+
+
+
+
+```{r}
+processed_data
+```
+
+
+
+
+
+
+
+
+# Get working directory path
+```{r}
+path <- getwd()
+```
+
+
+```{r}
+# Export file to working directory.  The file.path function has been used to ensure platform independence (i.e. take into account the different path syntaxes for various operating systems)
+write.csv(processed_data, file.path(path, "chess_processed_data.csv"), row.names = FALSE)
+
+```
+
+
+
+
+
+```{r}
+head(processed_data, 5)
+```
+
